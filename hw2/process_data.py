@@ -1,4 +1,4 @@
-import read_files
+
 import pandas as pd
 import numpy as np
 
@@ -14,9 +14,8 @@ def des_num_dep (data):
     data['cumsum'] = data['numberofdependents'].cumsum()
     total = data['numberofdependents'].sum()
     data['percentage'] = (data['cumsum'] / total)*100 
-    
-    return data
 
+    return data
 
 
 
@@ -39,8 +38,6 @@ def impute_val_to_column(data, col, method, l_bound = 0, u_bound = 1, freq_list 
         data[col] = data[col].fillna(data[col].mean())
 
 
-
-
 def discretize(data, column, bins):
     '''
     Given a continuous variable, create a new column in the dataframe
@@ -53,3 +50,5 @@ def discretize(data, column, bins):
     data[new_col] = pd.cut(data[column], bins=bins)
 
     return data[new_col]
+
+
