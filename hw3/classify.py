@@ -41,7 +41,7 @@ def define_clfs_params(grid_size):
         'LR': LogisticRegression(penalty='l1', C=1e5),
         'KNN': KNeighborsClassifier(n_neighbors=3),
         'DT': DecisionTreeClassifier(),
-        'SVM': svm.SVC(kernel='linear', probability=True, random_state=0), 
+        'LSVC': svm.LinearSVC(penalty='l1', random_state=0, dual=False), 
         'RF': RandomForestClassifier(n_estimators=50, n_jobs=-1),
         'AB': AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), algorithm="SAMME", n_estimators=200),
         'GB': GradientBoostingClassifier(learning_rate=0.05, subsample=0.5, max_depth=6, n_estimators=10),
@@ -57,7 +57,7 @@ def define_clfs_params(grid_size):
     'GB': {'n_estimators': [10,100], 'learning_rate' : [0.001,0.1,0.5],'subsample' : [0.1,0.5,1.0], 'max_depth': [5,50]},
     'NB' : {},
     'DT': {'criterion': ['gini', 'entropy'], 'max_depth': [1,5,10,20,50,100], 'max_features': ['sqrt','log2'],'min_samples_split': [2,5,10]},
-    'SVM' :{'C' :[0.00001,0.0001,0.001,0.01,0.1,1,10],'kernel':['linear']},
+    'LSVC' :{'penalty': ['l1','l2'], 'C' :[0.00001,0.0001,0.001,0.01,0.1,1,10]},
     'KNN' :{'n_neighbors': [1,5,10,25,50,100],'weights': ['uniform','distance'],'algorithm': ['auto','ball_tree','kd_tree']}
            }
     
@@ -69,7 +69,7 @@ def define_clfs_params(grid_size):
     'GB': {'n_estimators': [1], 'learning_rate' : [0.1],'subsample' : [0.5], 'max_depth': [1]},
     'NB' : {},
     'DT': {'criterion': ['gini'], 'max_depth': [1], 'max_features': ['sqrt'],'min_samples_split': [10]},
-    'SVM' :{'C' :[0.01],'kernel':['linear']},
+    'LSVC' :{'C' :[0.01]},
     'KNN' :{'n_neighbors': [5],'weights': ['uniform'],'algorithm': ['auto']}
            }
     
@@ -108,17 +108,18 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=0)
     results_df = pd.DataFrame(columns=('model_type', 'clf', 'parameters', 'train_time',
-                                        'predict_time', 'auc-roc', 'p_at_5', 
-                                        'p_at_10', 'p_at_20'))
+                                        'predict_time', 'auc-roc', 'p_at_5', 'p_at_10',
+                                        'p_at_20', 'r_at_5', 'r_at_10', 'r_at_20',
+                                        'f1_at_5', 'f1_at_10', 'f1_at_20'))
 
     for index, clf in enumerate([clfs[x] for x in models_to_run]):
-
-        
 
         print(models_to_run[index])
 
         parameter_values = grid[models_to_run[index]]
+
         for p in ParameterGrid(parameter_values):
+
             try:
                 clf.set_params(**p)
 
@@ -128,22 +129,27 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
 
                 start_time_predicting = time.time()
 
+                if models_to_run[index] == 'LSVC':
 
-                y_pred_probs = clf.fit(X_train, y_train).predict_proba(X_test)[:,1]
+                    y_pred_probs = clf.fit(X_train, y_train).decision_function(X_test)
+
+                else:
+                    y_pred_probs = clf.fit(X_train, y_train).predict_proba(X_test)[:,1]
 
 
                 predict_time = time.time() - start_time_predicting
 
                 roc_score = roc_auc_score(y_test, y_pred_probs)
+
                 y_pred_probs_sorted, y_test_sorted = zip(*sorted(zip(y_pred_probs, y_test), reverse=True))
 
-   
+                pr_5, r_5, f1_5 = metrics_at_k(y_test_sorted,y_pred_probs_sorted,5.0)
+                pr_10, r_10, f1_10 = metrics_at_k(y_test_sorted,y_pred_probs_sorted,10.0)
+                pr_20, r_20, f1_20 = metrics_at_k(y_test_sorted,y_pred_probs_sorted, 20.0)
 
                 results_df.loc[len(results_df)] = [models_to_run[index], clf, p,
-                                                   train_time, predict_time, roc_score, 
-                                                   precision_at_k(y_test_sorted,y_pred_probs_sorted,5.0),
-                                                   precision_at_k(y_test_sorted,y_pred_probs_sorted,10.0),
-                                                   precision_at_k(y_test_sorted,y_pred_probs_sorted,20.0)]
+                                                   train_time, predict_time, roc_score, pr_5, pr_10,
+                                                   pr_20, r_5, r_10, r_20, f1_5, f1_10, f1_20]
 
                 if print_plots:
 
@@ -164,18 +170,37 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
 
 
 def generate_binary_at_k(y_scores, k):
+    '''
+    Generate binary at threshold k
+    Inputs: y_scores predict proba from test target
+            k : threshold
+    Returns: test predicitions
+    '''
     cutoff_index = int(len(y_scores) * (k / 100.0))
     test_predictions_binary = [1 if x < cutoff_index else 0 for x in range(len(y_scores))]
     return test_predictions_binary
 
-def precision_at_k(y_true, y_scores, k):
+
+
+def metrics_at_k(y_true, y_scores, k):
+    '''
+    Calculate metrics at threshold k.
+    The metrics are precision, recall, and f1.
+    Inputs: y_true : target from test dataframe
+            y_scores: predict proba from test target
+            k: user defined threshold
+
+    Returns: Tuple with precision, recall and f1 
+             for threshold k
+    '''
     preds_at_k = generate_binary_at_k(y_scores, k)
     #precision, _, _, _ = metrics.precision_recall_fscore_support(y_true, preds_at_k)
     #precision = precision[1]  # only interested in precision for label 1
     precision = precision_score(y_true, preds_at_k)
-    return precision
+    recall = recall_score(y_true, preds_at_k)
+    f1 = f1_score(y_true, preds_at_k)
 
-
+    return precision, recall, f1
 
 
 
@@ -221,47 +246,6 @@ def plot_precision_recall_n(y_true, y_prob, model_name):
 
 
 
-def do_learning(features_list, grid_size, X_data, target):
-    '''
-    '''
-    clfs, grid = define_clfs_params(grid_size)
-    models_to_run=['RF','DT','KNN', 'ET', 'AB', 'GB', 'LR', 'NB']
-
-    results_df, cm_dic = clf_loop(models_to_run, clfs,grid, X_data, target, True)
-
-    results_df.to_csv('results.csv', index=False)
-
-    return cm_dic
-
-
-def do(X_data, target, model_list, hyperparameters):
-
-    '''
-    With training and testing data select the best
-    features with recursive feature elimination method, then
-    fit a classifier and return a tuple containing the predicted values on the test data
-    and a list of the best features used.
-    '''
-    ref_dic = {}
-    for index, x in enumerate(X_training.columns):
-        ref_dic[index] = x
-
-    model = model_class
-    # Recursive Feature Elimination
-    rfe = RFE(model)
-    rfe = rfe.fit(X_training, Y_training)
-    
-    best_features = rfe.get_support(indices=True)
-
-    best_features_names = [ref_dic[i] for i in best_features]
-
-    predicted = rfe.predict(X_test)
-    expected = Y_test
-
-    accuracy = accuracy_score(expected, predicted)
-    return (rfe, expected, predicted, best_features_names, accuracy)
-
-
 def plot_confusion_matrix(data, label_list, model_name):
     '''
     Given a pandas dataframe with a confusion confusion_matrix
@@ -299,3 +283,43 @@ def confusion_party(matrix_dictionary, label_list):
         yticks =  label_list
         sns.heatmap(matrix, annot=True,annot_kws={"size": 16}, linewidths=.5, xticklabels = xticks,  
                   yticklabels = yticks, fmt = '');
+
+
+def do_learning(models_to_run, features_list, grid_size, X_data, target):
+    '''
+    '''
+    clfs, grid = define_clfs_params(grid_size)
+
+    results_df, cm_dic = clf_loop(models_to_run, clfs,grid, X_data, target, True)
+
+    results_df.to_csv('results.csv', index=False)
+
+    return results_df, cm_dic
+
+
+def do(X_data, target, model_list, hyperparameters):
+
+    '''
+    With training and testing data select the best
+    features with recursive feature elimination method, then
+    fit a classifier and return a tuple containing the predicted values on the test data
+    and a list of the best features used.
+    '''
+    ref_dic = {}
+    for index, x in enumerate(X_training.columns):
+        ref_dic[index] = x
+
+    model = model_class
+    # Recursive Feature Elimination
+    rfe = RFE(model)
+    rfe = rfe.fit(X_training, Y_training)
+    
+    best_features = rfe.get_support(indices=True)
+
+    best_features_names = [ref_dic[i] for i in best_features]
+
+    predicted = rfe.predict(X_test)
+    expected = Y_test
+
+    accuracy = accuracy_score(expected, predicted)
+    return (rfe, expected, predicted, best_features_names, accuracy)
