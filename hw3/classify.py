@@ -124,17 +124,17 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
                 clf.set_params(**p)
 
                 start_time_training = time.time()
-                clf.fit(X_train, y_train)
+                model = clf.fit(X_train, y_train)
                 train_time = time.time() - start_time_training
 
                 start_time_predicting = time.time()
 
                 if models_to_run[index] == 'LSVC':
 
-                    y_pred_probs = clf.fit(X_train, y_train).decision_function(X_test)
+                    y_pred_probs = model.decision_function(X_test)
 
                 else:
-                    y_pred_probs = clf.fit(X_train, y_train).predict_proba(X_test)[:,1]
+                    y_pred_probs = model.predict_proba(X_test)[:,1]
 
 
                 predict_time = time.time() - start_time_predicting
