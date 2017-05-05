@@ -51,14 +51,14 @@ def define_clfs_params(grid_size):
     
     small_grid = { 
     'RF':{'n_estimators': [10,100], 'max_depth': [5,50], 'max_features': ['sqrt','log2'],'min_samples_split': [2,10]},
-    'LR': { 'penalty': ['l1','l2'], 'C': [0.00001,0.001,0.1,1,10]},
+    'LR': { 'penalty': ['l1','l2'], 'C': [0.001,0.1,1,10]},
     'ET': { 'n_estimators': [10,100], 'criterion' : ['gini', 'entropy'] ,'max_depth': [5,50], 'max_features': ['sqrt','log2'],'min_samples_split': [2,10]},
-    'AB': { 'algorithm': ['SAMME', 'SAMME.R'], 'n_estimators': [1,10,100,1000,10000]},
-    'GB': {'n_estimators': [10,100], 'learning_rate' : [0.001,0.1,0.5],'subsample' : [0.1,0.5,1.0], 'max_depth': [5,50]},
+    'AB': { 'algorithm': ['SAMME', 'SAMME.R'], 'n_estimators': [1,10,100]},
+    'GB': {'n_estimators': [1], 'learning_rate' : [0.1],'subsample' : [0.5], 'max_depth': [5]},
     'NB' : {},
-    'DT': {'criterion': ['gini', 'entropy'], 'max_depth': [1,5,10,20,50,100], 'max_features': ['sqrt','log2'],'min_samples_split': [2,5,10]},
-    'LSVC' :{'penalty': ['l1','l2'], 'C' :[0.00001,0.0001,0.001,0.01,0.1,1,10]},
-    'KNN' :{'n_neighbors': [1,5,10,25,50,100],'weights': ['uniform','distance'],'algorithm': ['auto','ball_tree','kd_tree']}
+    'DT': {'criterion': ['gini', 'entropy'], 'max_depth': [1,5,10,20], 'max_features': ['sqrt','log2'],'min_samples_split': [2,5,10]},
+    'LSVC' :{'penalty': ['l1','l2'], 'C' :[0.001,0.01,0.1,1,10]},
+    'KNN' :{'n_neighbors': [1,5,10,25],'weights': ['uniform','distance'],'algorithm': ['auto','ball_tree','kd_tree']}
            }
     
     test_grid = { 
@@ -287,6 +287,7 @@ def confusion_party(matrix_dictionary, label_list):
 
 def do_learning(models_to_run, features_list, grid_size, X_data, target):
     '''
+    Run the list of classifiers given the features provided by the user.
     '''
     clfs, grid = define_clfs_params(grid_size)
 
