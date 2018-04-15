@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy.stats import ttest_ind_from_stats as ttest
 
 def percentage_missing(data):
     '''
@@ -26,7 +27,8 @@ def frequency_plots(data, col_name):
     Returns: 
             plot
     '''
-    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(16,8))
+    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(11,7))
+    plt.rcParams['legend.fontsize'] = 20
 
     data[col_name].plot(kind = "hist", alpha = 0.2, bins = 20, color ='r', ax = ax1); 
     ax1.set_title('Distribution of Number of Dependents');
@@ -69,7 +71,7 @@ def plot_income_distribution(data, col_name):
     plt.tight_layout()
 
 
-def des_num_dep (data):
+def des_by_category (data, label):
     '''
     Creates data frame with cumsum and percentage of 
     dependents by category
@@ -77,8 +79,8 @@ def des_num_dep (data):
     Input: pandas data frame object
     Returns: new df with descriptive stats
     '''
-    data = data['numberofdependents'].value_counts().to_frame()
-    data['Cumulative_Sum'] = data['numberofdependents'].cumsum()
+    data = data[label].value_counts().to_frame()
+    data['Cumulative_Sum'] = data[label].cumsum()
     total = data['numberofdependents'].sum()
     data['Percentage_By_Group'] = (data['Cumulative_Sum'] / total)*100 
 
@@ -151,7 +153,7 @@ def dummify(data, col_name):
     df_add_dummy = pd.concat([data, dummy], axis =1 )
     return df_add_dummy
 
-def visualize_buckets(data, f1, f2, f3, age_bin, income_bin):
+def visualize_buckets(data, f1, age_bin, income_bin):
     '''
     Plot features by buckets
     Inputs: data - pandas dataframe
@@ -161,22 +163,15 @@ def visualize_buckets(data, f1, f2, f3, age_bin, income_bin):
     Returns:
             figure with 4 subplots
     '''
-    fig, ((ax1, ax2), (ax3, ax4))= plt.subplots(2,2, figsize=(30,20))
+    fig, ((ax1, ax2))= plt.subplots(1,2, figsize=(30,20))
 
-    data[[f1, f2]].groupby([f1]).mean().plot.area(alpha = 0.2, ax = ax1, color = 'b');
-    ax1.set_title('Serious Financial Distress by No Dependents');
-
-
-    data[[f2, age_bin]].groupby([age_bin]).mean().plot.area(alpha = 0.2, ax = ax2, color = 'r');
-    ax2.set_title('Serious Financial Distress by Age');
+    data[[f1, age_bin]].groupby([age_bin]).mean().plot.area(alpha = 0.2, ax = ax1, color = 'r');
+    ax1.set_title('Serious Financial Distress by Age');
 
 
-    data[[f2, income_bin]].groupby([income_bin]).mean().plot.area(alpha = 0.2, ax = ax3, color = 'purple');
-    ax3.set_title('Serious Financial Distress by Monthly Income');
+    data[[f1, income_bin]].groupby([income_bin]).mean().plot.area(alpha = 0.2, ax = ax2, color = 'purple');
+    ax2.set_title('Serious Financial Distress by Monthly Income');
 
-
-    data[[f3, age_bin]].groupby([age_bin]).mean().plot.area(alpha = 0.2, ax = ax4, color = 'green');
-    ax4.set_title('Debt/ Income Ratio by Age');
 
     fig.tight_layout()
 
@@ -190,5 +185,38 @@ def plot_corr_matrix(data):
     '''
     sns.set(font_scale=1.4)#for label size
     ax = plt.axes()
-    sns.heatmap(data.corr(), square=True, cmap='RdYlGn')
+    sns.heatmap(data.corr(), square=True, cmap='Blues')
     ax.set_title('Correlation Matrix')
+    
+    
+def generate_test_stats(data, varlst):
+    """
+    Generate summary stats for test
+    """
+    d = {}
+    for var in varlst:
+        if var != "dummy":
+            cond1 = data[data["dummy"] == 1][var]
+            cond0 = data[data["dummy"] == 0][var]
+            # Statistics for group 1
+            mu1 = np.nanmean(np.asarray(cond1))
+            s1  = np.nanstd(np.asarray(cond1)) 
+            n1  = cond1.notnull().sum()
+            # Statistics for group 0
+            mu2 = np.nanmean(np.asarray(cond0))
+            s2  = np.nanstd(np.asarray(cond0)) 
+            n2  = cond0.notnull().sum()
+            # Fill dictionary
+            d[var] = (mu1,s1,n1,mu2,s2,n2)
+    return d
+
+
+def test_means(dictionary):
+    """
+    Return dictionary with p-values from ttest
+    """
+    test = {}
+    for key, val in dictionary.items():
+        mu1, s1, n1, mu2, s2, n2 = val
+        test[key] = ttest(mu1, s1, n1, mu2, s2, n2).pvalue
+    return test

@@ -104,13 +104,21 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
     """
 
     conf_matrix = {}
-    count = 1
+    
+    count = 0
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=0)
     results_df = pd.DataFrame(columns=('model_type', 'clf', 'parameters', 'train_time',
                                         'predict_time', 'auc-roc', 'p_at_5', 'p_at_10',
                                         'p_at_20', 'r_at_5', 'r_at_10', 'r_at_20',
                                         'f1_at_5', 'f1_at_10', 'f1_at_20'))
+    
+    X_train = rf_imputation(X_train)
+    X_train = feature_eng(X_train)
+    
+    X_test = rf_imputation(X_test)
+    X_test = feature_eng(X_test)
+    
 
     for index, clf in enumerate([clfs[x] for x in models_to_run]):
 
@@ -151,16 +159,17 @@ def clf_loop(models_to_run, clfs, grid, X, y , print_plots = False):
                                                    train_time, predict_time, roc_score, pr_5, pr_10,
                                                    pr_20, r_5, r_10, r_20, f1_5, f1_10, f1_20]
 
+                
+                cm = confusion_matrix(sorted(y_test, reverse=True), sorted(generate_binary_at_k(y_test, 20.0), reverse=True))
+
+                if count not in conf_matrix:
+                    conf_matrix[count] = {'matrix' : cm , 'title': models_to_run[index]}
+                 
+                count = count + 1
+                
                 if print_plots:
 
                     plot_precision_recall_n(y_test, y_pred_probs, clf)
-
-                    cm = confusion_matrix(y_test, clf.fit(X_train, y_train).predict(X_test))
-
-                    if count not in conf_matrix:
-                        conf_matrix[count] = {'matrix' : cm , 'title': models_to_run[index]}
-
-                count = count +1
 
             except IndexError as e:
                 print('Error:', e)
@@ -285,17 +294,62 @@ def confusion_party(matrix_dictionary, label_list):
                   yticklabels = yticks, fmt = '');
 
 
-def do_learning(models_to_run, features_list, grid_size, X_data, target):
+def do_learning(models_to_run, grid_size, X_data, target):
     '''
     Run the list of classifiers given the features provided by the user.
     '''
     clfs, grid = define_clfs_params(grid_size)
 
-    results_df, cm_dic = clf_loop(models_to_run, clfs,grid, X_data, target, True)
+    results_df, cm_dic = clf_loop(models_to_run, clfs,grid, X_data, target)
 
     results_df.to_csv('results.csv', index=False)
 
     return results_df, cm_dic
+
+
+def rf_imputation(dataframe):
+    """
+    Impute missing income values with 
+    RandomForest Classifier
+    """
+    new_df = dataframe.drop(['dummy', 'personid'], axis=1)
+    process_data.impute_val_to_column(new_df,'numberofdependents', 'random', 0, 3, [0.65,0.2,0.15])
+    # One age value is missing
+    new_df['age'].replace(0, new_df['age'].mean(), inplace = True)
+    # Condition for Nan
+    cond = new_df["monthlyincome"].isna()
+    xtrain = new_df[~cond]
+    # Artificial Training
+    y = xtrain["monthlyincome"]
+    X = xtrain.drop(['monthlyincome'], axis=1)
+    # Testing on missing data
+    xtest = new_df[cond].drop(['monthlyincome'], axis=1)
+    # RandomForest
+    clf = RandomForestClassifier(n_estimators=20, max_depth=2, random_state=0, n_jobs=-1)
+    model = clf.fit(X, y)
+    pred = model.predict(xtest)
+    new_df.loc[xtest.index.values,'monthlyincome'] = pred
+    return new_df
+
+
+def feature_eng(features):
+    """
+    Feature Engineering:
+    - Creates Zip Code dummines
+    - Normalizes monthly income
+    - Normalizes Total balance on credit cards and personal lines of credit
+    """
+    # Create age dummies
+    features['bins_age'] = process_data.discretize(features, 'age', range(20,120,5)).astype('category')
+    features = process_data.dummify(features, 'bins_age')
+    features = features.drop(['age', 'bins_age'], axis = 1)
+    # Create Zipcode dummies
+    features = process_data.dummify(features, 'zipcode')
+    features = features.drop(['zipcode'], axis = 1)
+    # Normalize income data 
+    features = StandardScaler().fit_transform(features)
+
+    return features
 
 
 def do(X_data, target, model_list, hyperparameters):
