@@ -81,9 +81,10 @@ def des_by_category (data, label):
     '''
     data = data[label].value_counts().to_frame()
     data['Cumulative_Sum'] = data[label].cumsum()
-    total = data['numberofdependents'].sum()
+    data = data.rename(columns={label: 'Count_By_Group'})
+    total = data['Count_By_Group'].sum()
     data['Percentage_By_Group'] = (data['Cumulative_Sum'] / total)*100 
-
+    data.index.name = label
     return data
 
 
